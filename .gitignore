@@ -4,6 +4,8 @@ __pycache__/
 *$py.class
 
 outputs/
+swin_output/
+logs/
 
 # C extensions
 *.so
