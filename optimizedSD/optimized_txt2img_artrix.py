@@ -216,8 +216,7 @@ model.unet_bs = opt.unet_bs
 model.cdevice = opt.device
 model.turbo = opt.turbo
 
-swin = SwinIR(device=opt.device, model_path='model_zoo/swinir/003_realSR_BSRGAN_DFO_s64w8_SwinIR-M_x4_GAN.pth',
-                  task='real_sr', scale=4, folder_lq='./swin_testsets/artrix_sd_real_set1/')
+
 
 modelCS = instantiate_from_config(config.modelCondStage)
 _, _ = modelCS.load_state_dict(sd, strict=False)
@@ -262,6 +261,46 @@ else:
     precision_scope = nullcontext
 
 seeds = ""
+
+class Timer(object):
+    def __init__(self, name=None):
+        self.name = name
+
+    def __enter__(self):
+        self.tstart = time.time()
+
+    def __exit__(self, type, value, traceback):
+        if self.name:
+            print('[%s]' % self.name,)
+        print('Elapsed: %s' % (time.time() - self.tstart))
+
+def img_cb(x_pred,i):
+
+    modelFS.to('cuda')
+    x_samples_ddim = modelFS.decode_first_stage(x_pred)
+    x_sample = torch.clamp((x_samples_ddim + 1.0) / 2.0, min=0.0, max=1.0)
+    x_sample = 255.0 * rearrange(x_sample[0].cpu().numpy(), "c h w -> h w c")
+    im=Image.fromarray(x_sample.astype(np.uint8))
+    # im.show()
+
+    """
+    with Timer('decode'):
+        x_samples_ddim = modelFS.decode_first_stage(x_pred)
+    
+    with Timer('clamp'):
+        x_samples_ddim = torch.clamp((x_samples_ddim + 1.0) / 2.0, min=0.0, max=1.0)
+    #x_samples_ddim = x_samples_ddim.cpu().permute(0, 2, 3, 1).numpy()
+
+    #x_checked_image_torch = torch.from_numpy(x_samples_ddim).permute(0, 3, 1, 2)
+
+    with Timer('im'):
+        for x_sample in x_samples_ddim:
+            x_sample = 255. * rearrange(x_sample.cpu().numpy(), 'c h w -> h w c')
+            img = Image.fromarray(x_sample.astype(np.uint8))
+            img.show()
+    """
+
+
 with torch.no_grad():
 
     all_samples = list()
@@ -312,6 +351,7 @@ with torch.no_grad():
                     eta=opt.ddim_eta,
                     x_T=start_code,
                     sampler = opt.sampler,
+                    img_callback=img_cb,
                 )
 
                 modelFS.to(opt.device)
@@ -339,7 +379,8 @@ with torch.no_grad():
                 print("memory_final = ", torch.cuda.memory_allocated() / 1e6)
 
 toc = time.time()
-
+swin = SwinIR(device=opt.device, model_path='model_zoo/swinir/003_realSR_BSRGAN_DFO_s64w8_SwinIR-M_x4_GAN.pth',
+                 task='real_sr', scale=4, folder_lq='./swin_testsets/artrix_sd_real_set1/')
 time_taken = (toc - tic) / 60.0
 
 print(

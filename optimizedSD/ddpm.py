@@ -487,6 +487,7 @@ class UNet(DDPM):
                unconditional_conditioning=None,
                ):
         
+        print(img_callback)
 
         if(self.turbo):
             self.model1.to(self.cdevice)
@@ -537,7 +538,7 @@ class UNet(DDPM):
         elif sampler == "euler_a":
             self.make_schedule(ddim_num_steps=S, ddim_eta=eta, verbose=False)
             samples = self.euler_ancestral_sampling(self.alphas_cumprod,x_latent, S, conditioning, unconditional_conditioning=unconditional_conditioning,
-                                        unconditional_guidance_scale=unconditional_guidance_scale)
+                                        unconditional_guidance_scale=unconditional_guidance_scale,img_callback=img_callback)
 
         elif sampler == "dpm2":
             samples = self.dpm_2_sampling(self.alphas_cumprod,x_latent, S, conditioning, unconditional_conditioning=unconditional_conditioning,
@@ -813,7 +814,7 @@ class UNet(DDPM):
         return x
 
     @torch.no_grad()
-    def euler_ancestral_sampling(self,ac,x, S, cond, unconditional_conditioning = None, unconditional_guidance_scale = 1,extra_args=None, callback=None, disable=None):
+    def euler_ancestral_sampling(self,ac,x, S, cond, unconditional_conditioning = None, unconditional_guidance_scale = 1,extra_args=None, callback=None, disable=None,img_callback=None):
         """Ancestral sampling with Euler method steps."""
         extra_args = {} if extra_args is None else extra_args
 
@@ -842,6 +843,7 @@ class UNet(DDPM):
             dt = sigma_down - sigmas[i]
             x = x + d * dt
             x = x + torch.randn_like(x) * sigma_up
+            if img_callback: img_callback(x, i)
         return x
 
 
