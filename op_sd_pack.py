@@ -1,4 +1,6 @@
-import argparse, os, re
+import argparse
+import os
+import re
 from ctypes.wintypes import HACCEL
 from tkinter import W
 import torch
@@ -23,6 +25,7 @@ logging.set_verbosity_error()
 default_infer_config = "optimizedSD/v1-inference.yaml"
 DEFAULT_CKPT = "models/ldm/stable-diffusion-v1/model.ckpt"
 
+
 def chunk(it, size):
     it = iter(it)
     return iter(lambda: tuple(islice(it, size)), ())
@@ -36,41 +39,38 @@ def load_model_from_config(ckpt, verbose=False):
     sd = pl_sd["state_dict"]
     return sd
 
+
 class OptimizedStableDiffusion:
 
     class InferOption:
-        
-        def __init__(self,prompt,ddim_steps=30,ddim_eta=0.0,n_iter=1,scale=7.5):
 
-            self.prompt=prompt
-            self.ddim_steps=ddim_steps
-            self.ddim_eta=ddim_eta
-            self.n_iter=n_iter
-            self.scale=scale
-            self.seed=randint(0, 1000000)
+        def __init__(self, prompt, ddim_steps=30, ddim_eta=0.0, n_iter=1, scale=7.5):
+
+            self.prompt = prompt
+            self.ddim_steps = ddim_steps
+            self.ddim_eta = ddim_eta
+            self.n_iter = n_iter
+            self.scale = scale
+            self.seed = randint(0, 1000000)
 
         def next_seed(self):
-            self.seed+=1
+            self.seed += 1
             return self.seed
-        
 
+    def __init__(self, W=512, H=512, C=4, f=8, batch_size=1, device='cuda', ckpt=DEFAULT_CKPT, unet_bs=1, turbo=True, precision='autocast', format='png', sampler='euler_a'):
 
-
-    def __init__(self,W=512,H=512,C=4,f=8,n_samples=1,device='cuda',ckpt=DEFAULT_CKPT,unet_bs=1,turbo=True,precision='autocast',format='png',sampler='euler_a'):
-        
-        self.W=W
-        self.H=H
-        self.C=C
-        self.f=f
-        self.n_samples=n_samples
-        self.device=device
-        self.ckpt=ckpt
-        self.unet_bs=unet_bs
-        self.turbo=turbo
-        self.precision=precision
-        self.format=format
-        self.sampler=sampler
-
+        self.W = W
+        self.H = H
+        self.C = C
+        self.f = f
+        self.batch_size = batch_size
+        self.device = device
+        self.ckpt = ckpt
+        self.unet_bs = unet_bs
+        self.turbo = turbo
+        self.precision = precision
+        self.format = format
+        self.sampler = sampler
 
         # Init the Random Environment
         seed_everything(randint(0, 1000000))
@@ -95,291 +95,137 @@ class OptimizedStableDiffusion:
 
         config = OmegaConf.load(f"{default_infer_config}")
 
-        model = instantiate_from_config(config.modelUNet)
-        _, _ = model.load_state_dict(sd, strict=False)
-        model.eval()
-        model.unet_bs = self.unet_bs
-        model.cdevice = self.device
-        model.turbo = self.turbo
+        self.model = instantiate_from_config(config.modelUNet)
+        _, _ = self.model.load_state_dict(sd, strict=False)
+        self.model.eval()
+        self.model.unet_bs = self.unet_bs
+        self.model.cdevice = self.device
+        self.model.turbo = self.turbo
 
+        self.modelCS = instantiate_from_config(config.modelCondStage)
+        _, _ = self.modelCS.load_state_dict(sd, strict=False)
+        self.modelCS.eval()
+        self.modelCS.cond_stage_model.device = self.device
 
-
-        modelCS = instantiate_from_config(config.modelCondStage)
-        _, _ = modelCS.load_state_dict(sd, strict=False)
-        modelCS.eval()
-        modelCS.cond_stage_model.device = opt.device
-
-        modelFS = instantiate_from_config(config.modelFirstStage)
-        _, _ = modelFS.load_state_dict(sd, strict=False)
-        modelFS.eval()
+        self.modelFS = instantiate_from_config(config.modelFirstStage)
+        _, _ = self.modelFS.load_state_dict(sd, strict=False)
+        self.modelFS.eval()
         del sd
 
-        if opt.device != "cpu" and opt.precision == "autocast":
-            model.half()
-            modelCS.half()
+        if self.device != "cpu" and self.precision == "autocast":
+            self.model.half()
+            self.modelCS.half()
 
-        start_code = None
-        if opt.fixed_code:
-            start_code = torch.randn([opt.n_samples, opt.C, opt.H // opt.f, opt.W // opt.f], device=opt.device)
+        self.start_code = None
 
-
-        batch_size = opt.n_samples
-
-        assert opt.prompt is not None
-        prompt = opt.prompt
-        print(f"Using prompt: {prompt}")
-        data = [batch_size * [prompt]]
-
-
-
-
-        if opt.precision == "autocast" and opt.device != "cpu":
-            precision_scope = autocast
+        if self.precision == "autocast" and self.device != "cpu":
+            self.precision_scope = autocast
         else:
-            precision_scope = nullcontext
+            self.precision_scope = nullcontext
 
-        seeds = ""
+    def infer(self, infer_option: InferOption):
 
+        assert infer_option.prompt is not None
+        prompt = infer_option.prompt
+        print(f"Using prompt: {prompt}")
+        data = [self.batch_size * [prompt]]
 
+        with torch.no_grad():
 
-parser = argparse.ArgumentParser()
+            all_samples = list()
+            for n in trange(infer_option.n_iter, desc="Sampling"):
+                for prompts in tqdm(data, desc="data"):
 
+                    with self.precision_scope("cuda"):
+                        self.modelCS.to(self.device)
+                        uc = None
+                        if infer_option.scale != 1.0:
+                            uc = self.modelCS.get_learned_conditioning(
+                                self.batch_size * [""])
+                        if isinstance(prompts, tuple):
+                            prompts = list(prompts)
 
-parser.add_argument(
-    "--W",
-    type=int,
-    default=512,
-    help="image width, in pixel space",
-)
-parser.add_argument(
-    "--H",
-    type=int,
-    default=512,
-    help="image height, in pixel space",
-)
-parser.add_argument(
-    "--C",
-    type=int,
-    default=4,
-    help="latent channels",
-)
-parser.add_argument(
-    "--f",
-    type=int,
-    default=8,
-    help="downsampling factor",
-)
-parser.add_argument(
-    "--n_samples",
-    type=int,
-    default=5,
-    help="how many samples to produce for each given prompt. A.k.a. batch size",
-)
+                        subprompts, weights = split_weighted_subprompts(
+                            prompts[0])
+                        if len(subprompts) > 1:
+                            c = torch.zeros_like(uc)
+                            totalWeight = sum(weights)
+                            # normalize each "sub prompt" and add it
+                            for i in range(len(subprompts)):
+                                weight = weights[i]
+                                # if not skip_normalize:
+                                weight = weight / totalWeight
+                                c = torch.add(c, self.modelCS.get_learned_conditioning(
+                                    subprompts[i]), alpha=weight)
+                        else:
+                            c = self.modelCS.get_learned_conditioning(prompts)
 
-parser.add_argument(
-    "--device",
-    type=str,
-    default="cuda",
-    help="specify GPU (cuda/cuda:0/cuda:1/...)",
-)
-parser.add_argument(
-    "--seed",
-    type=int,
-    default=None,
-    help="the seed (for reproducible sampling)",
-)
-parser.add_argument(
-    "--unet_bs",
-    type=int,
-    default=1,
-    help="Slightly reduces inference time at the expense of high VRAM (value > 1 not recommended )",
-)
-parser.add_argument(
-    "--turbo",
-    action="store_true",
-    help="Reduces inference time on the expense of 1GB VRAM",
-)
-parser.add_argument(
-    "--precision", 
-    type=str,
-    help="evaluate at this precision",
-    choices=["full", "autocast"],
-    default="autocast"
-)
-parser.add_argument(
-    "--format",
-    type=str,
-    help="output image format",
-    choices=["jpg", "png"],
-    default="png",
-)
-parser.add_argument(
-    "--sampler",
-    type=str,
-    help="sampler",
-    choices=["ddim", "plms","heun", "euler", "euler_a", "dpm2", "dpm2_a", "lms"],
-    default="euler_a",
-)
-parser.add_argument(
-    "--ckpt",
-    type=str,
-    help="path to checkpoint of model",
-    default=DEFAULT_CKPT,
-)
+                        shape = [self.batch_size, self.C,
+                                 self.H // self.f, self.W // self.f]
+
+                        if self.device != "cpu":
+                            mem = torch.cuda.memory_allocated() / 1e6
+                            self.modelCS.to("cpu")
+                            while torch.cuda.memory_allocated() / 1e6 >= mem:
+                                time.sleep(1)
+
+                        samples_ddim = self.model.sample(
+                            S=infer_option.ddim_steps,
+                            conditioning=c,
+                            seed=infer_option.seed,
+                            shape=shape,
+                            verbose=False,
+                            unconditional_guidance_scale=infer_option.scale,
+                            unconditional_conditioning=uc,
+                            eta=infer_option.ddim_eta,
+                            x_T=self.start_code,
+                            sampler=self.sampler,
+                            img_callback=None,
+                        )
+
+                        self.modelFS.to(self.device)
+
+                        print(samples_ddim.shape)
+                        print("saving images")
+                        for i in range(self.batch_size):
+
+                            x_samples_ddim = self.modelFS.decode_first_stage(
+                                samples_ddim[i].unsqueeze(0))
+                            x_sample = torch.clamp(
+                                (x_samples_ddim + 1.0) / 2.0, min=0.0, max=1.0)
+                            x_sample = 255.0 * \
+                                rearrange(
+                                    x_sample[0].cpu().numpy(), "c h w -> h w c")
+                            
+                            # TODO: save image
+                            Image.fromarray(x_sample.astype(np.uint8)).show()
 
 
+                            infer_option.next_seed()
+
+                        if self.device != "cpu":
+                            mem = torch.cuda.memory_allocated() / 1e6
+                            self.modelFS.to("cpu")
+                            while torch.cuda.memory_allocated() / 1e6 >= mem:
+                                time.sleep(1)
+                        del samples_ddim
+                        print("memory_final = ",
+                              torch.cuda.memory_allocated() / 1e6)
 
 
+def img_cb(x_pred, i):
 
-
-parser.add_argument(
-    "--prompt", type=str, nargs="?", default="a painting of a virus monster playing guitar", help="the prompt to render"
-)
-
-parser.add_argument(
-    "--ddim_steps",
-    type=int,
-    default=50,
-    help="number of ddim sampling steps",
-)
-
-
-parser.add_argument(
-    "--ddim_eta",
-    type=float,
-    default=0.0,
-    help="ddim eta (eta=0.0 corresponds to deterministic sampling",
-)
-parser.add_argument(
-    "--n_iter",
-    type=int,
-    default=1,
-    help="sample this often",
-)
-
-parser.add_argument(
-    "--scale",
-    type=float,
-    default=7.5,
-    help="unconditional guidance scale: eps = eps(x, empty) + scale * (eps(x, cond) - eps(x, empty))",
-)
-
-opt = parser.parse_args()
-
-tic = time.time()
-
-
-class Timer(object):
-    def __init__(self, name=None):
-        self.name = name
-
-    def __enter__(self):
-        self.tstart = time.time()
-
-    def __exit__(self, type, value, traceback):
-        if self.name:
-            print('[%s]' % self.name,)
-        print('Elapsed: %s' % (time.time() - self.tstart))
-
-def img_cb(x_pred,i):
-
-    #modelFS.to('cuda')
+    # modelFS.to('cuda')
     x_samples_ddim = modelFS.decode_first_stage(x_pred)
     x_sample = torch.clamp((x_samples_ddim + 1.0) / 2.0, min=0.0, max=1.0)
     x_sample = 255.0 * rearrange(x_sample[0].cpu().numpy(), "c h w -> h w c")
-    im=Image.fromarray(x_sample.astype(np.uint8))
+    im = Image.fromarray(x_sample.astype(np.uint8))
     # im.show()
 
 
-with torch.no_grad():
+if __name__ == "__main__":
+    infer_option = OptimizedStableDiffusion.InferOption("portrait of a white cat")
 
-    all_samples = list()
-    for n in trange(opt.n_iter, desc="Sampling"):
-        for prompts in tqdm(data, desc="data"):
 
-            sample_path = os.path.join(outpath, "_".join(re.split(":| ", prompts[0])))[:150]
-            os.makedirs(sample_path, exist_ok=True)
-            base_count = len(os.listdir(sample_path))
-
-            with precision_scope("cuda"):
-                modelCS.to(opt.device)
-                uc = None
-                if opt.scale != 1.0:
-                    uc = modelCS.get_learned_conditioning(batch_size * [""])
-                if isinstance(prompts, tuple):
-                    prompts = list(prompts)
-
-                subprompts, weights = split_weighted_subprompts(prompts[0])
-                if len(subprompts) > 1:
-                    c = torch.zeros_like(uc)
-                    totalWeight = sum(weights)
-                    # normalize each "sub prompt" and add it
-                    for i in range(len(subprompts)):
-                        weight = weights[i]
-                        # if not skip_normalize:
-                        weight = weight / totalWeight
-                        c = torch.add(c, modelCS.get_learned_conditioning(subprompts[i]), alpha=weight)
-                else:
-                    c = modelCS.get_learned_conditioning(prompts)
-
-                shape = [opt.n_samples, opt.C, opt.H // opt.f, opt.W // opt.f]
-
-                if opt.device != "cpu":
-                    mem = torch.cuda.memory_allocated() / 1e6
-                    modelCS.to("cpu")
-                    while torch.cuda.memory_allocated() / 1e6 >= mem:
-                        time.sleep(1)
-
-                
-
-                samples_ddim = model.sample(
-                    S=opt.ddim_steps,
-                    conditioning=c,
-                    seed=opt.seed,
-                    shape=shape,
-                    verbose=False,
-                    unconditional_guidance_scale=opt.scale,
-                    unconditional_conditioning=uc,
-                    eta=opt.ddim_eta,
-                    x_T=start_code,
-                    sampler = opt.sampler,
-                    img_callback=None,
-                )  
-
-                modelFS.to(opt.device)
-
-                print(samples_ddim.shape)
-                print("saving images")
-                for i in range(batch_size):
-
-                    x_samples_ddim = modelFS.decode_first_stage(samples_ddim[i].unsqueeze(0))
-                    x_sample = torch.clamp((x_samples_ddim + 1.0) / 2.0, min=0.0, max=1.0)
-                    x_sample = 255.0 * rearrange(x_sample[0].cpu().numpy(), "c h w -> h w c")
-                    Image.fromarray(x_sample.astype(np.uint8)).save(
-                        os.path.join(sample_path, "seed_" + str(opt.seed) + "_" + f"{base_count:05}.{opt.format}")
-                    )
-                    seeds += str(opt.seed) + ","
-                    opt.seed += 1
-                    base_count += 1
-
-                if opt.device != "cpu":
-                    mem = torch.cuda.memory_allocated() / 1e6
-                    modelFS.to("cpu")
-                    while torch.cuda.memory_allocated() / 1e6 >= mem:
-                        time.sleep(1)
-                del samples_ddim
-                print("memory_final = ", torch.cuda.memory_allocated() / 1e6)
-
-toc = time.time()
-swin = SwinIR(device=opt.device, model_path='model_zoo/swinir/003_realSR_BSRGAN_DFO_s64w8_SwinIR-M_x4_GAN.pth',
-                 task='real_sr', scale=4, folder_lq='./swin_testsets/artrix_sd_real_set1/')
-time_taken = (toc - tic) / 60.0
-
-print(
-    (
-        "Samples finished in {0:.2f} minutes and exported to "
-        + sample_path
-        + "\n Seeds used = "
-        + seeds[:-1]
-    ).format(time_taken)
-)
+    sd=OptimizedStableDiffusion()
+    sd.infer(infer_option)
