@@ -171,6 +171,9 @@ class OptimizedStableDiffusion:
                             while torch.cuda.memory_allocated() / 1e6 >= mem:
                                 time.sleep(1)
 
+                        self.modelFS.to(self.device)
+                        self.modelFS.half()
+
                         samples_ddim = self.model.sample(
                             S=infer_option.ddim_steps,
                             conditioning=c,
@@ -182,10 +185,11 @@ class OptimizedStableDiffusion:
                             eta=infer_option.ddim_eta,
                             x_T=self.start_code,
                             sampler=self.sampler,
-                            img_callback=None,
+                            img_callback=img_cb,
+                            optimized_sd_object=self
                         )
 
-                        self.modelFS.to(self.device)
+                        #self.modelFS.to(self.device)
 
                         print(samples_ddim.shape)
                         print("saving images")
@@ -215,13 +219,15 @@ class OptimizedStableDiffusion:
         return return_img_list
 
 
-def img_cb(x_pred, i):
+def img_cb(optimized_sd_obj,x_pred, i):
 
-    # modelFS.to('cuda')
-    x_samples_ddim = modelFS.decode_first_stage(x_pred)
+    #=modelFS.to('cuda')
+    x_samples_ddim = optimized_sd_obj.modelFS.decode_first_stage(x_pred)
     x_sample = torch.clamp((x_samples_ddim + 1.0) / 2.0, min=0.0, max=1.0)
     x_sample = 255.0 * rearrange(x_sample[0].cpu().numpy(), "c h w -> h w c")
     im = Image.fromarray(x_sample.astype(np.uint8))
+    plt.imshow(np.asarray(im))
+    plt.show()
     # im.show()
 
 
