@@ -1,11 +1,16 @@
-from op_sd_pack import OptimizedStableDiffusion
-from swin_ir_pack import SwinIR
+from backend.stable_diffusion.op_sd_pack import OptimizedStableDiffusion
+from backend.stable_diffusion.swin_ir_pack import SwinIR
 import matplotlib.pyplot as plt
 import numpy as np
 
-sd = OptimizedStableDiffusion(W=704,H=448)
+sd = OptimizedStableDiffusion(W=704,H=448,ckpt="backend/stable_diffusion/models/ldm/stable-diffusion-v1/model.ckpt")
+"""
 sd_infer_option = OptimizedStableDiffusion.InferOption(
     "infinite hyperbolic intricate maze, futuristic eco warehouse made out of dead vines, glass mezzanine level, lots of windows, wood pallets, designed by Aesop, forest house surrounded by massive willow trees and vines, white exterior facade, in full frame, , exterior view, twisted house, 3d printed canopy, clay, earth architecture, cavelike interiors, convoluted spaces, hyper realistic, photorealism, octane render, unreal engine, 4k")
+sd_infer_option.n_iter = 2
+"""
+sd_infer_option = OptimizedStableDiffusion.InferOption(
+    "octane rendered character portrait of mitsurugi, 3 d, octane render, depth of field, unreal engine 5, concept art, vibrant colors, glow, trending on artstation, ultra high detail, ultra realistic, cinematic lighting, focused, 8 k")
 sd_infer_option.n_iter = 2
 
 """

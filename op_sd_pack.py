@@ -22,8 +22,8 @@ from transformers import logging
 # from samplers import CompVisDenoiser
 logging.set_verbosity_error()
 
-default_infer_config = "optimizedSD/v1-inference.yaml"
-DEFAULT_CKPT = "models/ldm/stable-diffusion-v1/model.ckpt"
+default_infer_config = "backend/stable_diffusion/optimizedSD/v1-inference.yaml"
+DEFAULT_CKPT = "backend/stable_diffusion/models/ldm/stable-diffusion-v1/model.ckpt"
 
 
 def chunk(it, size):
