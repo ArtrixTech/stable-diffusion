@@ -215,7 +215,7 @@ class OptimizedStableDiffusion:
                         del samples_ddim
                         print("memory_final = ",
                               torch.cuda.memory_allocated() / 1e6)
-
+        torch.cuda.empty_cache()
         return return_img_list
 
 
@@ -226,14 +226,14 @@ def img_cb(optimized_sd_obj,x_pred, i):
     x_sample = torch.clamp((x_samples_ddim + 1.0) / 2.0, min=0.0, max=1.0)
     x_sample = 255.0 * rearrange(x_sample[0].cpu().numpy(), "c h w -> h w c")
     im = Image.fromarray(x_sample.astype(np.uint8))
-    plt.imshow(np.asarray(im))
-    plt.show()
+    #plt.imshow(np.asarray(im))
+    #plt.show()
     # im.show()
 
 
 if __name__ == "__main__":
-    infer_option = OptimizedStableDiffusion.InferOption("portrait of a white cat, realistic, photo realistic")
-    infer_option.n_iter = 4
+    infer_option = OptimizedStableDiffusion.InferOption("domestic cat walking on street with tails lifted, detailed, 8k wallpaper, realistic, cute, good shape")
+    infer_option.n_iter = 2
 
     import matplotlib.pyplot as plt
     import numpy as np
@@ -241,11 +241,11 @@ if __name__ == "__main__":
     sd=OptimizedStableDiffusion()
     result=sd.infer(infer_option)
 
-    fig = plt.figure(figsize=(2, 2))
+    fig = plt.figure(figsize=(2, 1))
 
     i=0
     for im in result:
-        fig.add_subplot(2, 2, i+1)
+        fig.add_subplot(2, 1, i+1)
         plt.imshow(np.asarray(im))
         
         i+=1
