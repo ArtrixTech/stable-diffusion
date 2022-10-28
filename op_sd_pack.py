@@ -123,14 +123,28 @@ class OptimizedStableDiffusion:
         else:
             self.precision_scope = nullcontext
 
-    def infer(self, infer_option: InferOption):
+    def infer(self, infer_option: InferOption, callback=None):
+
+        def img_cb(optimized_sd_obj, x_pred, i):
+
+            x_samples_ddim = optimized_sd_obj.modelFS.decode_first_stage(
+                x_pred)
+            x_sample = torch.clamp(
+                (x_samples_ddim + 1.0) / 2.0, min=0.0, max=1.0)
+            x_sample = 255.0 * \
+                rearrange(x_sample[0].cpu().numpy(), "c h w -> h w c")
+            im = Image.fromarray(x_sample.astype(np.uint8))
+
+            callback(im, i)
+
+            print(i)
 
         assert infer_option.prompt is not None
         prompt = infer_option.prompt
         print(f"Using prompt: {prompt}")
         data = [self.batch_size * [prompt]]
 
-        return_img_list=[]
+        return_img_list = []
 
         with torch.no_grad():
 
@@ -185,14 +199,12 @@ class OptimizedStableDiffusion:
                             eta=infer_option.ddim_eta,
                             x_T=self.start_code,
                             sampler=self.sampler,
-                            img_callback=img_cb,
+                            img_callback=img_cb if callback else None,
                             optimized_sd_object=self
                         )
 
-                        #self.modelFS.to(self.device)
+                        # self.modelFS.to(self.device)
 
-                        print(samples_ddim.shape)
-                        print("saving images")
                         for i in range(self.batch_size):
 
                             x_samples_ddim = self.modelFS.decode_first_stage(
@@ -202,8 +214,9 @@ class OptimizedStableDiffusion:
                             x_sample = 255.0 * \
                                 rearrange(
                                     x_sample[0].cpu().numpy(), "c h w -> h w c")
-                            
-                            return_img_list.append(Image.fromarray(x_sample.astype(np.uint8)))
+
+                            return_img_list.append(
+                                Image.fromarray(x_sample.astype(np.uint8)))
 
                             infer_option.next_seed()
 
@@ -218,35 +231,28 @@ class OptimizedStableDiffusion:
         torch.cuda.empty_cache()
         return return_img_list
 
-
-def img_cb(optimized_sd_obj,x_pred, i):
-
-    #=modelFS.to('cuda')
-    x_samples_ddim = optimized_sd_obj.modelFS.decode_first_stage(x_pred)
-    x_sample = torch.clamp((x_samples_ddim + 1.0) / 2.0, min=0.0, max=1.0)
-    x_sample = 255.0 * rearrange(x_sample[0].cpu().numpy(), "c h w -> h w c")
-    im = Image.fromarray(x_sample.astype(np.uint8))
-    #plt.imshow(np.asarray(im))
-    #plt.show()
+    # plt.imshow(np.asarray(im))
+    # plt.show()
     # im.show()
 
 
 if __name__ == "__main__":
-    infer_option = OptimizedStableDiffusion.InferOption("domestic cat walking on street with tails lifted, detailed, 8k wallpaper, realistic, cute, good shape")
+    infer_option = OptimizedStableDiffusion.InferOption(
+        "domestic cat walking on street with tails lifted, detailed, 8k wallpaper, realistic, cute, good shape")
     infer_option.n_iter = 2
 
     import matplotlib.pyplot as plt
     import numpy as np
 
-    sd=OptimizedStableDiffusion()
-    result=sd.infer(infer_option)
+    sd = OptimizedStableDiffusion()
+    result = sd.infer(infer_option)
 
     fig = plt.figure(figsize=(2, 1))
 
-    i=0
+    i = 0
     for im in result:
         fig.add_subplot(2, 1, i+1)
         plt.imshow(np.asarray(im))
-        
-        i+=1
+
+        i += 1
     plt.show()
