@@ -1,6 +1,6 @@
 modelUNet:
   base_learning_rate: 1.0e-04
-  target: optimizedSD.ddpm.UNet
+  target: backend.stable_diffusion.optimizedSD.ddpm.UNet
   params:
     linear_start: 0.00085
     linear_end: 0.0120
@@ -18,7 +18,7 @@ modelUNet:
     use_ema: False
 
     unetConfigEncode:
-      target: optimizedSD.openaimodelSplit.UNetModelEncode
+      target: backend.stable_diffusion.optimizedSD.openaimodelSplit.UNetModelEncode
       params:
         image_size: 32 # unused
         in_channels: 4
@@ -35,7 +35,7 @@ modelUNet:
         legacy: False
 
     unetConfigDecode:
-      target: optimizedSD.openaimodelSplit.UNetModelDecode
+      target: backend.stable_diffusion.optimizedSD.openaimodelSplit.UNetModelDecode
       params:
         image_size: 32 # unused
         in_channels: 4
@@ -52,7 +52,7 @@ modelUNet:
         legacy: False
 
 modelFirstStage:
-  target: optimizedSD.ddpm.FirstStage
+  target: backend.stable_diffusion.optimizedSD.ddpm.FirstStage
   params:
     linear_start: 0.00085
     linear_end: 0.0120
@@ -69,7 +69,7 @@ modelFirstStage:
     scale_factor: 0.18215
     use_ema: False
     first_stage_config:
-      target: ldm.models.autoencoder.AutoencoderKL
+      target: backend.stable_diffusion.ldm.models.autoencoder.AutoencoderKL
       params:
         embed_dim: 4
         monitor: val/rec_loss
@@ -92,7 +92,7 @@ modelFirstStage:
           target: torch.nn.Identity
 
 modelCondStage:
-  target: optimizedSD.ddpm.CondStage
+  target: backend.stable_diffusion.optimizedSD.ddpm.CondStage
   params:
     linear_start: 0.00085
     linear_end: 0.0120
@@ -109,6 +109,6 @@ modelCondStage:
     scale_factor: 0.18215
     use_ema: False
     cond_stage_config:
-      target: ldm.modules.encoders.modules.FrozenCLIPEmbedder
+      target: backend.stable_diffusion.ldm.modules.encoders.modules.FrozenCLIPEmbedder
       params:
         device: cpu

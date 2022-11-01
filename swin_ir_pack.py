@@ -8,8 +8,8 @@ import os
 import torch
 import requests
 
-from models.network_swinir import SwinIR as net
-from utils import util_calculate_psnr_ssim as util
+from backend.stable_diffusion.models.network_swinir import SwinIR as net
+from backend.stable_diffusion.utils import util_calculate_psnr_ssim as util
 
 
 def pil_img_to_cv2(pil_img):

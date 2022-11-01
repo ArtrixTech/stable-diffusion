@@ -18,7 +18,7 @@ from torchvision.utils import make_grid
 from tqdm import tqdm, trange
 from transformers import logging
 
-from ldm.util import instantiate_from_config
+from backend.stable_diffusion.ldm.util import instantiate_from_config
 from optimUtils import split_weighted_subprompts, logger
 
 logging.set_verbosity_error()

@@ -18,7 +18,7 @@ from pytorch_lightning import seed_everything
 from torch import autocast
 from einops import rearrange, repeat
 from contextlib import nullcontext
-from ldm.util import instantiate_from_config
+from backend.stable_diffusion.ldm.util import instantiate_from_config
 from transformers import logging
 import pandas as pd
 from optimUtils import split_weighted_subprompts, logger

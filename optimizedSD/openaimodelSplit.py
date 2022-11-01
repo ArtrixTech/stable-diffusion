@@ -4,7 +4,7 @@ import numpy as np
 import torch as th
 import torch.nn as nn
 import torch.nn.functional as F
-from ldm.modules.diffusionmodules.util import (
+from backend.stable_diffusion.ldm.modules.diffusionmodules.util import (
     checkpoint,
     conv_nd,
     linear,
@@ -13,7 +13,7 @@ from ldm.modules.diffusionmodules.util import (
     normalization,
     timestep_embedding,
 )
-from optimizedSD.splitAttention import SpatialTransformer
+from backend.stable_diffusion.optimizedSD.splitAttention import SpatialTransformer
 
 
 class AttentionPool2d(nn.Module):
