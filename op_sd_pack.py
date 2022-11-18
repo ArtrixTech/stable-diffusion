@@ -135,9 +135,10 @@ class OptimizedStableDiffusion:
                 rearrange(x_sample[0].cpu().numpy(), "c h w -> h w c")
             im = Image.fromarray(x_sample.astype(np.uint8))
 
-            callback(im, i)
+            callback(im, i/(infer_option.ddim_steps-1))
 
-            print(i)
+            #print(i)
+            #print(x_pred.shape[0])
 
         assert infer_option.prompt is not None
         prompt = infer_option.prompt
